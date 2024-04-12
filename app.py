@@ -5,18 +5,39 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
-
+import json
 
 
 
 # Load API key from environment variables
 api_key = st.secrets["secrets"]["api_key"]
+CHAT_HISTORY_FILE = "chat_history.json"
 
 # Title of the Streamlit app
 st.title('Oryx AI')
 
 embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
+# Function to save chat history to a file
+def save_chat_history(messages):
+    with open(CHAT_HISTORY_FILE, "w") as file:
+        json.dump(messages, file)
 
+# Function to load chat history from a file
+def load_chat_history():
+    if os.path.exists(CHAT_HISTORY_FILE):
+        with open(CHAT_HISTORY_FILE, "r") as file:
+            return json.load(file)
+    else:
+        return []
+
+# Function to delete chat history file
+def delete_chat_history_file():
+    if os.path.exists(CHAT_HISTORY_FILE):
+        os.remove(CHAT_HISTORY_FILE)
+def get_vector_store(text_chunks):
+    embeddings = GoogleGenerativeAIEmbeddings(model = "models/embedding-001",google_api_key=api_key)
+    vector_store = FAISS.from_documents(text_chunks, embedding=embeddings)
+    vector_store.save_local("faiss_index")
 
 def load_documents(pdf_file):
     """Loads documents from a PDF file."""
@@ -26,10 +47,10 @@ def load_documents(pdf_file):
     docs=text_splitter.split_documents(documents)
     
     return docs
-    
+
 @st.cache_data
-def generate_response(prompt, text):
-    """Generates text based on the prompt and extracted text."""
+def generate_response(prompt, text, chat_history):
+    """Generates text based on the prompt, extracted text, and chat history."""
     llm = GoogleGenerativeAI(
         model="gemini-pro",
         google_api_key=api_key,
@@ -38,7 +59,13 @@ def generate_response(prompt, text):
         },
     )
 
-    combined_text = (
+    combined_text = ""
+    
+    # Add chat history to the context
+    for message in chat_history:
+        combined_text += f"{message['content']}\n"
+    
+    combined_text += (
         "As your helpful assistant, I want to ensure our communication is clear and efficient. Here are some guidelines to follow:\n\n"
         "- Please provide thorough and structured answers, avoiding shortcuts and ensuring accuracy.\n"
         "- Format your responses in markdown for better readability.\n"
@@ -64,11 +91,22 @@ def generate_response(prompt, text):
 
 
 def main():
+    delete_chat_history_file()
+    st.session_state.messages = load_chat_history()
+
     with st.sidebar:
         pdf_file = st.file_uploader("Choose a PDF file (optional)", type="pdf")
         if pdf_file:
             with open(pdf_file.name, mode='wb') as w:
                 w.write(pdf_file.getvalue())
+            
+            if st.sidebar.button("Process") and pdf_file is not None:
+             with st.spinner("Processing..."):
+                    texts = load_documents(pdf_file)
+                    get_vector_store(texts)
+                    st.success("Success")
+        
+            
     if "messages" not in st.session_state:
         st.session_state.messages = [] #initialize chat history
 
@@ -85,24 +123,28 @@ def main():
         else:
             # Add user message to chat history
             st.session_state.messages.append({"role": "user", "content": prompt})
+            save_chat_history(st.session_state.messages)
             with st.chat_message("user"):
                 st.markdown(prompt)
         if pdf_file:
-            loaded_data = load_documents(pdf_file)
-            db = FAISS.from_documents(loaded_data, embeddings)
-            #using the similarity search check if the prompt is not related to the docs then generate response without context
-            docs=db.similarity_search(prompt)
+            
+            
+
+            new_db = FAISS.load_local("faiss_index", embeddings,allow_dangerous_deserialization=True)
+            docs=new_db.similarity_search(prompt)
             context_text = "\n\n--\n\n".join([doc.page_content for doc in docs])
-            response = generate_response(prompt, context_text)
-            st.markdown(response[0])
-            # Add bot message to chat history
-            st.session_state.messages.append({"role": "bot", "content": response[0]}) 
-                
-        else:
-            response = generate_response(prompt, "")
+            response = generate_response(prompt, context_text, st.session_state.messages)
             st.markdown(response[0])
             # Add bot message to chat history
             st.session_state.messages.append({"role": "bot", "content": response[0]})
+            save_chat_history(st.session_state.messages) 
+                
+        else:
+            response = generate_response(prompt, "", st.session_state.messages)
+            st.markdown(response[0])
+            # Add bot message to chat history
+            st.session_state.messages.append({"role": "bot", "content": response[0]})
+            save_chat_history(st.session_state.messages)
 
     # Limit chat history (optional)
     if len(st.session_state.messages) > 50:
@@ -110,3 +152,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
