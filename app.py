@@ -91,7 +91,6 @@ def generate_response(prompt, text, chat_history):
 
 
 def main():
-    delete_chat_history_file()
     st.session_state.messages = load_chat_history()
 
     with st.sidebar:
@@ -105,6 +104,10 @@ def main():
                     texts = load_documents(pdf_file)
                     get_vector_store(texts)
                     st.success("Success")
+        if st.sidebar.button("Clear Chat"):
+            st.session_state.messages = []
+            delete_chat_history_file()
+            st.experimental_rerun()
         
             
     if "messages" not in st.session_state:
@@ -148,7 +151,11 @@ def main():
 
     # Limit chat history (optional)
     if len(st.session_state.messages) > 50:
-        st.session_state.messages = st.session_state.messages[-50:]  # Keep the last 50 messages
+        st.session_state.messages = st.session_state.messages[-50:] 
+    #delete chat history when re run
+    
+ 
+    # Keep the last 50 messages
 
 if __name__ == "__main__":
     main()
