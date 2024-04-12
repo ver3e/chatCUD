@@ -14,7 +14,7 @@ api_key = st.secrets["secrets"]["api_key"]
 CHAT_HISTORY_FILE = "chat_history.json"
 
 # Title of the Streamlit app
-st.title('Oryx AI')
+st.title('Chat CUD')
 
 embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
 # Function to save chat history to a file
@@ -47,6 +47,15 @@ def load_documents(pdf_file):
     docs=text_splitter.split_documents(documents)
     
     return docs
+def load_documents_2(listOfPDFs):
+    chunks = ""
+    for pdf in listOfPDFs:
+        with pdf:
+            loader = PyPDFLoader(pdf.name)
+            all_Text = loader.load()
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=5000, chunk_overlap=500, length_function=len, add_start_index=True)
+            chunks =text_splitter.split_documents(all_Text)
+    return chunks
 
 @st.cache_data
 def generate_response(prompt, text, chat_history):
@@ -94,16 +103,21 @@ def main():
     st.session_state.messages = load_chat_history()
 
     with st.sidebar:
-        pdf_file = st.file_uploader("Choose a PDF file (optional)", type="pdf")
-        if pdf_file:
-            with open(pdf_file.name, mode='wb') as w:
-                w.write(pdf_file.getvalue())
+        radiobutton=st.radio("what do you want to chat with",["internet","PDF"])
+        if radiobutton=="PDF":
+            pdf_file = st.file_uploader("Choose a PDF file (optional)", type="pdf",accept_multiple_files=True)
+            if pdf_file:
+                for pdf in pdf_file:
+                    
+                    with open(pdf.name, mode='wb') as w:
+                        w.write(pdf.getvalue())
             
-            if st.sidebar.button("Process") and pdf_file is not None:
-             with st.spinner("Processing..."):
-                    texts = load_documents(pdf_file)
-                    get_vector_store(texts)
-                    st.success("Success")
+                if st.sidebar.button("Process") and pdf_file is not None:
+                 with st.spinner("Processing..."):
+                        texts = load_documents_2(pdf_file)
+                        print(texts)
+                        get_vector_store(texts)
+                        st.success("Success")
         if st.sidebar.button("Clear Chat"):
             st.session_state.messages = []
             delete_chat_history_file()
@@ -129,7 +143,7 @@ def main():
             save_chat_history(st.session_state.messages)
             with st.chat_message("user"):
                 st.markdown(prompt)
-        if pdf_file:
+        if radiobutton=="PDF":
             
             
 
@@ -143,6 +157,7 @@ def main():
             save_chat_history(st.session_state.messages) 
                 
         else:
+
             response = generate_response(prompt, "", st.session_state.messages)
             st.markdown(response[0])
             # Add bot message to chat history
