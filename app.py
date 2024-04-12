@@ -35,27 +35,28 @@ def delete_chat_history_file():
     if os.path.exists(CHAT_HISTORY_FILE):
         os.remove(CHAT_HISTORY_FILE)
 def get_vector_store(text_chunks):
-    embeddings = GoogleGenerativeAIEmbeddings(model = "models/embedding-001",google_api_key=api_key)
-    vector_store = FAISS.from_documents(text_chunks, embedding=embeddings)
-    vector_store.save_local("faiss_index")
-
-def load_documents(pdf_file):
-    """Loads documents from a PDF file."""
-    loader = PyPDFLoader(pdf_file.name)
-    documents=loader.load()
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=5000, chunk_overlap=500, length_function=len, add_start_index=True)
-    docs=text_splitter.split_documents(documents)
     
-    return docs
-def load_documents_2(listOfPDFs):
-    chunks = ""
+    if not isinstance(text_chunks, list):
+        raise ValueError("Text must be a list of text documents")
+    try:
+        embedding_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
+        create_embedding = FAISS.from_documents(text_chunks, embedding=embedding_model)
+        create_embedding.save_local("embeddings_index")
+    except Exception as e:
+        st.error(f"Error creating embeddings: {e}")
+
+
+def load_documents_text(listOfPDFs):
+    chunks = []
     for pdf in listOfPDFs:
         with pdf:
             loader = PyPDFLoader(pdf.name)
             all_Text = loader.load()
+        
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=5000, chunk_overlap=500, length_function=len, add_start_index=True)
-            chunks =text_splitter.split_documents(all_Text)
+            chunks.extend(text_splitter.split_documents(all_Text))
     return chunks
+
 
 @st.cache_data
 def generate_response(prompt, text, chat_history):
@@ -114,7 +115,7 @@ def main():
             
                 if st.sidebar.button("Process") and pdf_file is not None:
                  with st.spinner("Processing..."):
-                        texts = load_documents_2(pdf_file)
+                        texts = load_documents_text(pdf_file)
                         print(texts)
                         get_vector_store(texts)
                         st.success("Success")
@@ -147,7 +148,7 @@ def main():
             
             
 
-            new_db = FAISS.load_local("faiss_index", embeddings,allow_dangerous_deserialization=True)
+            new_db = FAISS.load_local("embeddings_index", embeddings=embeddings,allow_dangerous_deserialization=True)
             docs=new_db.similarity_search(prompt)
             context_text = "\n\n--\n\n".join([doc.page_content for doc in docs])
             response = generate_response(prompt, context_text, st.session_state.messages)
@@ -157,7 +158,7 @@ def main():
             save_chat_history(st.session_state.messages) 
                 
         else:
-
+            st.write("internet")
             response = generate_response(prompt, "", st.session_state.messages)
             st.markdown(response[0])
             # Add bot message to chat history
