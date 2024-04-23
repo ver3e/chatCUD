@@ -1,0 +1,1 @@
+[{"role": "user", "content": "hello"}, {"role": "bot", "content": "Question: {'question': ChatPromptTemplate(input_variables=['context', 'question'], messages=[HumanMessagePromptTemplate(prompt=PromptTemplate(input_variables=['context', 'question'], template='Answer the question based ONLY on the following context:\\n    {context}\\n    Question: {question}\\n    '))])}"}]
